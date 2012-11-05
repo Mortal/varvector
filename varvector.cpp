@@ -6,6 +6,9 @@
 #include <iostream> // for my_visitor, using std::cout
 #include <vector> // type non-variadic vector basis
 #include <stdexcept>
+#include <boost/utility.hpp>
+#include <boost/type_traits.hpp>
+#include <typeinfo>
 
 // Variadic type vector visitor concept:
 // Must have a operator() that is templated to accept
@@ -16,26 +19,72 @@ public:
 
 	template <typename T>
 	void operator()(T & v) {
-		std::cout << v << std::endl;
+		std::cout << typeid(T).name() << ' ' << v << std::endl;
 	}
 };
 
-// SFINAE (Substitution Failure Is Not An Error):
-// Check if two types are the same or different.
-// Equivalent to boost::enable_if<boost::is_same<T, U> >.
-// #include <boost/utility.hpp>
-// #include <boost/type_traits.hpp>
+// The following complexity exploits the C++ language principle named
+// SFINAE (Substitution Failure Is Not An Error)
 
-template <typename T, typename U>
-struct same {};
-template <typename T>
-struct same<T, T> { typedef void type; };
+// A "type list" is either void (the empty list of types)
+// or a type T and a type list Ts in std::pair<T, Ts>
 
-// Equivalent to boost::disable_if<boost::is_same<T, U> >.
-template <typename T, typename U>
-struct different { typedef void type; };
-template <typename T>
-struct different<T, T> {};
+// This class is used to test if one type wins against another in an overload
+// resolution setting.
+template <typename Candidate, typename Opponent>
+struct better_match_helper {
+	static boost::true_type foo(Candidate);
+	static boost::false_type foo(Opponent);
+	static boost::false_type foo(...);
+};
+
+// true_type if Candidate is a better choice than Opponent when given parameter
+// of type Check;
+// false_type otherwise
+template <typename Check, typename Candidate, typename Opponent>
+struct better_match : public decltype(better_match_helper<Candidate, Opponent>::foo(*((Check*)0)))
+{};
+
+// true_type if one of the types in Types is a better match than Candidate
+// given Check
+template <typename Candidate, typename Types, typename Check>
+struct exists_better_match;
+
+// In case of the empty list, there is not a better match
+template <typename Candidate, typename Check>
+struct exists_better_match<Candidate, void, Check> {
+	static const bool value = false;
+};
+
+// Test first element of list, or recurse into the rest of the type list
+template <typename Candidate, typename T, typename Next, typename Check>
+struct exists_better_match<Candidate, std::pair<T, Next>, Check> {
+	static const bool value =
+		(boost::is_convertible<Check, T>::value
+		&& better_match<Check, T, Candidate>::value)
+		|| (exists_better_match<Candidate, Next, Check>::value);
+};
+
+template <typename Current, typename Next, typename Check>
+struct check_closest_match {
+	static const bool value =
+		boost::is_convertible<Check, Current>::value
+		&& !exists_better_match<Current, Next, Check>::value;
+};
+
+// Alias of the above
+template <typename Current, typename Next, typename Check>
+struct closest_match
+: public boost::enable_if<check_closest_match<Current, Next, Check> >
+{
+};
+
+// Alias of the above
+template <typename Current, typename Next, typename Check>
+struct not_closest_match
+: public boost::disable_if<check_closest_match<Current, Next, Check> >
+{
+};
 
 // `Types` is either the empty type list `void`
 // or a type and a type list `std::pair<T, Ts>`
@@ -146,25 +195,35 @@ public:
 		return iterator(make_end(), make_end());
 	}
 	template <typename T>
-	void push_back(T a, typename same<Current, T>::type * = 0) {
+	void push_back(T a, typename closest_match<Current, Next, T>::type * = 0) {
 		items.push_back(std::make_pair(this->size(), a));
 		++this->m_size;
 	}
 	template <typename T>
-	void push_back(T a, typename different<Current, T>::type * = 0) {
+	void push_back(T a, typename not_closest_match<Current, Next, T>::type * = 0) {
 		p_t::push_back(a);
 	}
 };
 
-int main() {
-	varvector<std::pair<int, std::pair<const char *, void> > > a;
+template <typename T1, typename T2, typename T3>
+void test() {
+	varvector<std::pair<T1, std::pair<T2, std::pair<T3, void> > > > a;
+	short s = 2;
+	a.push_back(s);
 	a.push_back(42);
-	a.push_back("hello");
+	a.push_back("Hello world!");
+	a.push_back(42.5);
 	a.push_back(42);
-	a.push_back("hello");
+	a.push_back(42.5);
 	my_visitor v;
 	for (auto i = a.begin(); i != a.end(); ++i) {
 		i(v);
 	}
+}
+
+int main() {
+	test<int, const char *, double>();
+	test<const char *, double, int>();
+	test<double, int, const char *>();
 	return 0;
 }
