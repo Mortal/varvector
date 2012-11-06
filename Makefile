@@ -1,5 +1,5 @@
 CXX=clang++
-CXXFLAGS=-Wall -Wextra -pedantic -Werror -std=c++11 -g
+CXXFLAGS=-Wall -Wextra -pedantic -Werror -g
 
 all: varvector
 

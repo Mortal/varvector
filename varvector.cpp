@@ -33,16 +33,25 @@ public:
 // resolution setting.
 template <typename Candidate, typename Opponent>
 struct better_match_helper {
-	static boost::true_type foo(Candidate);
-	static boost::false_type foo(Opponent);
-	static boost::false_type foo(...);
+	static char foo(Candidate);
+	static short foo(Opponent);
+	static short foo(...);
 };
+
+template <size_t sz>
+struct onetwo_helper;
+
+template <>
+struct onetwo_helper<sizeof(char)> : public boost::true_type {};
+
+template <>
+struct onetwo_helper<sizeof(short)> : public boost::false_type {};
 
 // true_type if Candidate is a better choice than Opponent when given parameter
 // of type Check;
 // false_type otherwise
 template <typename Check, typename Candidate, typename Opponent>
-struct better_match : public decltype(better_match_helper<Candidate, Opponent>::foo(*((Check*)0)))
+struct better_match : public onetwo_helper<sizeof(better_match_helper<Candidate, Opponent>::foo(*((Check*)0)))>
 {};
 
 // true_type if one of the types in Types is a better match than Candidate
@@ -207,7 +216,9 @@ public:
 
 template <typename T1, typename T2, typename T3>
 void test() {
-	varvector<std::pair<T1, std::pair<T2, std::pair<T3, void> > > > a;
+	typedef varvector<std::pair<T1, std::pair<T2, std::pair<T3, void> > > > vector_type;
+	typedef typename vector_type::iterator iterator;
+	vector_type a;
 	short s = 2;
 	a.push_back(s);
 	a.push_back(42);
@@ -216,7 +227,7 @@ void test() {
 	a.push_back(42);
 	a.push_back(42.5);
 	my_visitor v;
-	for (auto i = a.begin(); i != a.end(); ++i) {
+	for (iterator i = a.begin(); i != a.end(); ++i) {
 		i(v);
 	}
 }
