@@ -56,53 +56,51 @@ struct better_match : public onetwo_helper<sizeof(better_match_helper<Candidate,
 
 // true_type if one of the types in Types is a better match than Candidate
 // given Check
-template <typename Candidate, typename Types, typename Check>
+template <typename Candidate, typename Check, typename... Types>
 struct exists_better_match;
 
 // In case of the empty list, there is not a better match
 template <typename Candidate, typename Check>
-struct exists_better_match<Candidate, void, Check> {
+struct exists_better_match<Candidate, Check> {
 	static const bool value = false;
 };
 
 // Test first element of list, or recurse into the rest of the type list
-template <typename Candidate, typename T, typename Next, typename Check>
-struct exists_better_match<Candidate, std::pair<T, Next>, Check> {
+template <typename Candidate, typename Check, typename T, typename... Next>
+struct exists_better_match<Candidate, Check, T, Next...> {
 	static const bool value =
 		(boost::is_convertible<Check, T>::value
 		&& better_match<Check, T, Candidate>::value)
-		|| (exists_better_match<Candidate, Next, Check>::value);
+		|| (exists_better_match<Candidate, Check, Next...>::value);
 };
 
-template <typename Current, typename Next, typename Check>
+template <typename Current, typename Check, typename... Next>
 struct check_closest_match {
 	static const bool value =
 		boost::is_convertible<Check, Current>::value
-		&& !exists_better_match<Current, Next, Check>::value;
+		&& !exists_better_match<Current, Check, Next...>::value;
 };
 
 // Alias of the above
-template <typename Current, typename Next, typename Check>
+template <typename Current, typename Check, typename... Next>
 struct closest_match
-: public boost::enable_if<check_closest_match<Current, Next, Check> >
+: public boost::enable_if<check_closest_match<Current, Check, Next...> >
 {
 };
 
 // Alias of the above
-template <typename Current, typename Next, typename Check>
+template <typename Current, typename Check, typename... Next>
 struct not_closest_match
-: public boost::disable_if<check_closest_match<Current, Next, Check> >
+: public boost::disable_if<check_closest_match<Current, Check, Next...> >
 {
 };
 
-// `Types` is either the empty type list `void`
-// or a type and a type list `std::pair<T, Ts>`
-template <typename Types>
+template <typename... Types>
 class varvector;
 
 // Base case: Empty type list
 template <>
-class varvector<void> {
+class varvector<> {
 protected:
 	typedef size_t it_initializer;
 	size_t m_size;
@@ -143,9 +141,9 @@ public:
 	};
 };
 
-template <typename Current, typename Next>
-class varvector<std::pair<Current, Next> > : public varvector<Next> {
-	typedef varvector<Next> p_t;
+template <typename Current, typename... Next>
+class varvector<Current, Next...> : public varvector<Next...> {
+	typedef varvector<Next...> p_t;
 	typedef std::vector<std::pair<size_t, Current> > storage;
 	storage items;
 protected:
@@ -204,19 +202,19 @@ public:
 		return iterator(make_end(), make_end());
 	}
 	template <typename T>
-	void push_back(T a, typename closest_match<Current, Next, T>::type * = 0) {
+	void push_back(T a, typename closest_match<Current, T, Next...>::type * = 0) {
 		items.push_back(std::make_pair(this->size(), a));
 		++this->m_size;
 	}
 	template <typename T>
-	void push_back(T a, typename not_closest_match<Current, Next, T>::type * = 0) {
+	void push_back(T a, typename not_closest_match<Current, T, Next...>::type * = 0) {
 		p_t::push_back(a);
 	}
 };
 
-template <typename T1, typename T2, typename T3>
+template <typename... Types>
 void test() {
-	typedef varvector<std::pair<T1, std::pair<T2, std::pair<T3, void> > > > vector_type;
+	typedef varvector<Types...> vector_type;
 	typedef typename vector_type::iterator iterator;
 	vector_type a;
 	short s = 2;
